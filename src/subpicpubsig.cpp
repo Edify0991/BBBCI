@@ -11,13 +11,6 @@ void subpicpubsiger::callback(const sensor_msgs::ImageConstPtr& depth_img, const
     fs++;
     //ROS_INFO("%d", fs);
     subpicpubsiger::process_pic(color_pic);
-    //if(fs == 10)
-    //{
-        
-    //    fs = 0;
-    //}
-    
-    //std::cout << "image data: " << data1.at<uint16_t>(240, 320) * 0.001 << std::endl;//表示获取图像坐标为240,320的深度值,单位是毫米
 }
 
 subpicpubsiger::subpicpubsiger() : it(nh)

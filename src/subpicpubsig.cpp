@@ -1,5 +1,10 @@
 #include "bci_grip/subpicpubsig.h"
-
+//相机内参(待修正)
+const double camera_factor = 100; 
+const double camera_cx = 312.72546386;
+const double camera_cy = 231.788;
+const double camera_fx = 602.482;
+const double camera_fy = 601.534;
 void subpicpubsiger::callback(const sensor_msgs::ImageConstPtr& depth_img, const sensor_msgs::ImageConstPtr& color_img)
 {
     ROS_WARN("%s", depth_img->encoding.c_str());
@@ -20,15 +25,22 @@ subpicpubsiger::subpicpubsiger() : it(nh)
     fs = 0;
     depth_sub.subscribe(nh, "/camera/aligned_depth_to_color/image_raw", 1);
     image_sub.subscribe(nh, "/camera/color/image_raw", 1);
-    PicProcessedSig_Sub = nh.subscribe<std_msgs::Bool>("PicSubSig", 1, &subpicpubsiger::PicProcessedSigCallback, this);
-    sig_process = nh.advertise<std_msgs::Bool>("PicSubSig", 1);
+    
+    PicProcessedSig_Sub = nh.subscribe<std_msgs::Bool>("/PicSubSig", 1, &subpicpubsiger::PicProcessedSigCallback, this);
+    sig_process = nh.advertise<std_msgs::Bool>("/PicSubSig", 1);
     //Picture_Pub = nh.advertise<std_msgs::Float64MultiArray>("PictureNode", 10);
-    Picture_Pub = it.advertise("PictureNode", 1);
-    PositionLength_Pub = nh.advertise<std_msgs::Float64MultiArray>("PositionLengthNode", 10);
+    Picture_Pub = it.advertise("/PictureNode", 1);
+    PositionLength_Pub = nh.advertise<std_msgs::Float64MultiArray>("/PositionLengthNode", 10);
+    Point_Pub = nh.advertise<std_msgs::Float64MultiArray>("/Point3D", 10);
     //回调
     sync_.reset(new Sync(MySyncPolicy(1), depth_sub, image_sub));
     
     sync_->registerCallback(boost::bind(&subpicpubsiger::callback, this, _1, _2));
+    //定义手眼标定矩阵
+    hand_eye << 1, 0, 0, 0,
+                                0, 1, 0, 0,
+                                0, 0, 1, 0;
+                                0, 0, 0, 1;
     //ROS_INFO("Done!");
 }
 
@@ -94,8 +106,9 @@ void subpicpubsiger::process_pic(cv::Mat color_image)
 
 	int min_area = 2000, index = 0;
     double imagearea;
-    std::vector<double> PositionLength_Array;
+    std::vector<double> PositionLength_Array, Point_Array;
     PositionLength_Array.clear();
+    Point_Array.clear();
     for (int i = 0; i < contours.size(); i++)
     {
         imagearea = cv::contourArea(contours[i]);
@@ -120,7 +133,21 @@ void subpicpubsiger::process_pic(cv::Mat color_image)
             //将图像中物块的位置及边长存储到PositionLength_Array中
             PositionLength_Array.push_back(cpt.x);
             PositionLength_Array.push_back(cpt.y);
-            float d = depth_pic.ptr<float>(int(cpt.x))[int(cpt.y)];//ushort d = depth_pic.ptr<ushort>(m)[n];
+            //计算图像中物块中心点实际空间位置
+            geometry_msgs::Point p, Point_Msg;
+            if(depth_pic.ptr<float>(int(cpt.x))[int(cpt.y)] >0 &&  depth_pic.ptr<float>(int(cpt.x))[int(cpt.y)] <= 4096){
+                float d = depth_pic.ptr<float>(int(cpt.x))[int(cpt.y)];//ushort d = depth_pic.ptr<ushort>(m)[n];
+                p.z = double(d) / camera_factor;
+                p.x = (int(cpt.y) - camera_cx) * p.z / camera_fx;
+                p.y = (int(cpt.x) - camera_cy) * p.z / camera_fy;
+                Eigen::Matrix<double, 4, 1>  Pt_Camera, Pt_Base;
+                Pt_Camera << p.x, p.y, p.z, 1.0;
+                Pt_Base = hand_eye * Pt_Camera;
+                Point_Array.push_back(Pt_Base(0, 1));
+                Point_Array.push_back(Pt_Base(1, 1));
+                Point_Array.push_back(Pt_Base(2, 1));
+            }
+            
             double length = 1000;
             for(int j = 0 ; j < 4 ; j++)
             {//取四边形最短的边长为按钮标记边长
@@ -133,6 +160,8 @@ void subpicpubsiger::process_pic(cv::Mat color_image)
         }
     }
     cv::imshow("snack", Img);
+    
+
     int key;
     bool sig = 0;
     std::string strnum, strname;
@@ -140,8 +169,8 @@ void subpicpubsiger::process_pic(cv::Mat color_image)
     std::string strimg1_1 = "./src/bci_grip/src/pic/imgcolor00";
     std::string strimg2 = ".jpg";
     const char* pcname; //指向文件名称的首地址 
+
     //当接收到信号时，将图片发布给matlab的PTB
-    
     if(flag == 1)
     {
         Pic_msg = cv_bridge::CvImage(std_msgs::Header(), "bgr8", Img).toImageMsg();
@@ -158,13 +187,16 @@ void subpicpubsiger::process_pic(cv::Mat color_image)
         //     }
         // }
         // std_msgs::Float64MultiArray pic;
-        std_msgs::Float64MultiArray PositionLength_Msg;
+        std_msgs::Float64MultiArray PositionLength_Msg, Point_Msg;
        	//pic.data = sendPic_reshape;
         Picture_Pub.publish(Pic_msg);
         ROS_INFO("图像已发布");
         PositionLength_Msg.data = PositionLength_Array;
         PositionLength_Pub.publish(PositionLength_Msg);
         ROS_INFO("位置大小信息已发布");
+        Point_Msg.data = Point_Array;
+        Point_Pub.publish(Point_Msg);
+        ROS_INFO("点坐标已发布");
     }
 
     key = cv::waitKey(2);
@@ -181,7 +213,8 @@ void subpicpubsiger::process_pic(cv::Mat color_image)
         imwrite(pcname, Img);
         //sig_process.publish(sigmsg);    //发布图像处理结束信号
     }
-
+    color_pic.release();
+    depth_pic.release();
     if(key == 113)
     {
         cv::destroyAllWindows();

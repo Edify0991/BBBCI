@@ -8,18 +8,23 @@
 #include <message_filters/sync_policies/approximate_time.h>
 
 #include <image_transport/image_transport.h>
+
 #include <opencv2/opencv.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/highgui/highgui_c.h>
 #include <cv_bridge/cv_bridge.h>
+
 #include <std_msgs/Int8.h>
 #include <std_msgs/Bool.h>
 #include <std_msgs/Float64MultiArray.h>
+#include <sensor_msgs/CameraInfo.h> 
+#include <sensor_msgs/Image.h>
+#include <geometry_msgs/Point.h>
 
 #include <iostream>
 #include <vector>
-
+#include <Eigen/Dense>
 
 class subpicpubsiger
 {
@@ -29,6 +34,7 @@ class subpicpubsiger
         message_filters::Subscriber<sensor_msgs::Image> image_sub;
         ros::Publisher sig_process;
         ros::Subscriber PicProcessedSig_Sub;
+        ros::Subscriber camerainfo_Sub;
         int fs;//定义处理图像的频率
         int num;    //储存图片的数目
         bool flag;
@@ -37,14 +43,17 @@ class subpicpubsiger
         boost::shared_ptr<Sync> sync_;//时间同步器
         cv_bridge::CvImagePtr color_ptr, depth_ptr;
         cv::Mat color_pic, depth_pic;
+        Eigen::Matrix<double, 4, 4> hand_eye;
     public:
         
         std_msgs::Bool sigmsg;
         //ros::Publisher Picture_Pub;
         ros::Publisher PositionLength_Pub;
+        ros::Publisher Point_Pub;
         image_transport::ImageTransport it;
         image_transport::Publisher Picture_Pub;
         sensor_msgs::ImagePtr Pic_msg;
+        geometry_msgs::Point Pt_msg;
         subpicpubsiger();
         void process_pic(cv::Mat color_image);
         void callback(const sensor_msgs::ImageConstPtr& depth_img, const sensor_msgs::ImageConstPtr& color_img);

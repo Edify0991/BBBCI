@@ -8,6 +8,16 @@ project(bci_grip)
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 ## is used, also find other catkin packages
 find_package(catkin REQUIRED COMPONENTS
+  actionlib
+  control_msgs
+  controller_manager
+  geometry_msgs
+  hardware_interface
+  industrial_msgs
+  std_srvs
+  trajectory_msgs
+  ur_msgs
+  moveit_ros_move_group
   gazebo_plugins
   gazebo_ros
   gazebo_ros_control
@@ -39,9 +49,33 @@ find_package(catkin REQUIRED COMPONENTS
   #VISP REQUIRED
   sensor_msgs
   message_filters
+
+  ur_modern_driver
+  robotiq_2f_gripper_control
 )
 find_package(Eigen3 REQUIRED)
 find_package(OpenCV REQUIRED)
+
+# check c++11 / c++0x
+include(CheckCXXCompilerFlag)
+check_cxx_compiler_flag("-std=c++11" COMPILER_SUPPORTS_CXX11)
+check_cxx_compiler_flag("-std=c++0x" COMPILER_SUPPORTS_CXX0X)
+if(COMPILER_SUPPORTS_CXX11)
+  add_compile_options(-std=c++11)
+elseif(COMPILER_SUPPORTS_CXX0X)
+  add_compile_options(-std=c++0x)
+else()
+  message(FATAL_ERROR "The compiler ${CMAKE_CXX_COMPILER} has no C++11 support. Please use a different C++ compiler. Suggested solution: update the pkg build-essential ")
+endif()
+
+add_compile_options(-Wall)
+add_compile_options(-Wextra)
+add_compile_options(-Wno-unused-parameter)
+
+# support indigo's ros_control - This can be removed upon EOL indigo
+if("${controller_manager_msgs_VERSION}" VERSION_LESS "0.10.0")
+  add_definitions(-DUR_ROS_CONTROL_INTERFACE_OLD_ROS_CONTROL)
+endif()
 
 if (WIN32)
 find_package(realsense2 CONFIG REQUIRED)
@@ -150,7 +184,7 @@ catkin_package(
   INCLUDE_DIRS include
 #  LIBRARIES bci_grip
   CATKIN_DEPENDS gazebo_plugins gazebo_ros gazebo_ros_control roscpp rospy rviz std_msgs urdf xacro std_msgs message_runtime
-#  DEPENDS system_lib
+  DEPENDS system_lib EIGEN3
 )
 
 ###########
@@ -169,6 +203,10 @@ include_directories(
 )
 
 ## Declare a C++ library
+
+# Hardware Interface
+
+
 add_library(
   subpicpubsig
   include/${PROJECT_NAME}/subpicpubsig.h
@@ -211,6 +249,10 @@ target_link_libraries(node_pic_cpp2
     ${catkin_LIBRARIES})
 target_link_libraries(node_pic_cpp2 ${OpenCV_LIBS})
 
+add_executable(bci_ur5 src/bci_ur5.cpp)
+target_link_libraries(bci_ur5 ${catkin_LIBRARIES})
+add_executable(ur5_test_go_home_up src/go_home_up.cpp)
+target_link_libraries(ur5_test_go_home_up ${catkin_LIBRARIES})
 
 
 ## Rename C++ executable without prefix

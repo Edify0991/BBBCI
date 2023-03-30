@@ -22,3 +22,5 @@
 如果这时候报错显示**fatal: 拒绝合并无关的历史**
 则执行git pull origin Edify_Cd  --allow-unrelated-histories，强制将代码合并到git仓库中
 ###至此，将新建的功能包（本地仓库）上传并链接到远程仓库的过程就完毕了！
+####更新gitignore文件后不生效
+在更新gitignore文件后直接提交是没有办法生效的，需要执行git rm -r --cached 路径/文件名来先删除仓库的记录，想让哪个生效，删哪个缓存就好，之后在.gitignore配置即可生效

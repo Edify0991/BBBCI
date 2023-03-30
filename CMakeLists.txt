@@ -199,6 +199,7 @@ include_directories(
   ${Eigen_INCLUDE_DIRS}
   ${OpenCV_INCLUDE_DIRS}
   ${realsense2_INCLUDE_DIR}
+  ~/code/catkin_ws/src/hrc/include
   #~/catkin_ws/devel/include
 )
 
@@ -254,6 +255,11 @@ target_link_libraries(bci_ur5 ${catkin_LIBRARIES})
 add_executable(ur5_test_go_home_up src/go_home_up.cpp)
 target_link_libraries(ur5_test_go_home_up ${catkin_LIBRARIES})
 
+add_executable(bci_ur_actual src/bci_ur_move.cpp)
+target_link_libraries(bci_ur_actual 
+    process_robot_data
+    ${catkin_LIBRARIES}
+)
 
 ## Rename C++ executable without prefix
 ## The above recommended prefix causes long target names, the following renames the

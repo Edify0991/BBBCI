@@ -55,6 +55,7 @@ find_package(catkin REQUIRED COMPONENTS
 )
 find_package(Eigen3 REQUIRED)
 find_package(OpenCV REQUIRED)
+find_package(ur_rtde REQUIRED)
 
 # check c++11 / c++0x
 include(CheckCXXCompilerFlag)
@@ -241,7 +242,9 @@ add_executable(col_align_dep src/col_align_dep.cpp)
 target_link_libraries(col_align_dep
     ${catkin_LIBRARIES}
     ${OpenCV_LIBS}
-    subpicpubsig)
+    subpicpubsig
+    ur_rtde::rtde
+)
 target_link_libraries(col_align_dep /opt/ros/melodic/lib/libmessage_filters.so)
 target_link_libraries(col_align_dep /opt/ros/melodic/lib/libcv_bridge.so)
 

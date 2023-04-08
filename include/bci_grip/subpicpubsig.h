@@ -26,6 +26,9 @@
 #include <vector>
 #include <Eigen/Dense>
 
+#include <ur_rtde/rtde_receive_interface.h>
+#include <ur_rtde/rtde_control_interface.h>
+
 class subpicpubsiger
 {
     private:
@@ -58,6 +61,8 @@ class subpicpubsiger
         void process_pic(cv::Mat color_image);
         void callback(const sensor_msgs::ImageConstPtr& depth_img, const sensor_msgs::ImageConstPtr& color_img);
         void PicProcessedSigCallback(const std_msgs::Bool::ConstPtr& MsgPtr);
+        ur_rtde::RTDEControlInterface rtde_control;
+        ur_rtde::RTDEReceiveInterface rtde_receive;
 };
 
 

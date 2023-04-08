@@ -5,6 +5,7 @@ const double camera_cx = 312.72546386;
 const double camera_cy = 231.788;
 const double camera_fx = 602.482;
 const double camera_fy = 601.534;
+
 void subpicpubsiger::callback(const sensor_msgs::ImageConstPtr& depth_img, const sensor_msgs::ImageConstPtr& color_img)
 {
     ROS_WARN("%s", depth_img->encoding.c_str());
@@ -18,7 +19,7 @@ void subpicpubsiger::callback(const sensor_msgs::ImageConstPtr& depth_img, const
     subpicpubsiger::process_pic(color_pic);
 }
 
-subpicpubsiger::subpicpubsiger() : it(nh)
+subpicpubsiger::subpicpubsiger() : it(nh), rtde_control("192.168.0.103"), rtde_receive("192.168.0.103")
 {
     num = 0;
     flag = 0;
@@ -109,6 +110,10 @@ void subpicpubsiger::process_pic(cv::Mat color_image)
     std::vector<double> PositionLength_Array, Point_Array;
     PositionLength_Array.clear();
     Point_Array.clear();
+    std::vector<double> nowUrPose;
+    double angle;
+    Eigen::Vector3d vec, transl;
+    Eigen::Matrix4d T_Base_TCL;
     for (int i = 0; i < contours.size(); i++)
     {
         imagearea = cv::contourArea(contours[i]);
@@ -140,9 +145,21 @@ void subpicpubsiger::process_pic(cv::Mat color_image)
                 p.z = double(d) / camera_factor;
                 p.x = (int(cpt.y) - camera_cx) * p.z / camera_fx;
                 p.y = (int(cpt.x) - camera_cy) * p.z / camera_fy;
-                Eigen::Matrix<double, 4, 1>  Pt_Camera, Pt_Base;
+                Eigen::Matrix<double, 4, 1>  Pt_Camera, Pt_Base, Pt_TCL;
                 Pt_Camera << p.x, p.y, p.z, 1.0;
-                Pt_Base = hand_eye * Pt_Camera;
+                Pt_TCL = hand_eye * Pt_Camera;
+                //手眼标定矩阵可将点从相机坐标系转换到工具坐标系，下一步由工具坐标系转换到基坐标系
+                nowUrPose = rtde_receive.getActualTCPPose();
+                vec << nowUrPose[3], nowUrPose[4], nowUrPose[5];
+                transl << nowUrPose[0], nowUrPose[1], nowUrPose[2];
+                angle = vec.norm();
+                vec = vec.normalized();
+                Eigen::AngleAxisd rotation_vector(angle, vec);
+                Eigen::Isometry3d T = Eigen::Isometry3d::Identity();
+                T.rotate(rotation_vector);
+                T.pretranslate(transl);
+                T_Base_TCL = T.matrix();
+                Pt_Base = T_Base_TCL * Pt_TCL;
                 Point_Array.push_back(Pt_Base(0, 1));
                 Point_Array.push_back(Pt_Base(1, 1));
                 Point_Array.push_back(Pt_Base(2, 1));

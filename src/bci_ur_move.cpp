@@ -2,11 +2,13 @@
 #include <ros/ros.h>
 #include <std_msgs/Float64MultiArray.h>
 #include <std_msgs/Float64.h>
+#include <std_msgs/Bool.h>
 #include <Eigen/Core>
 #include <Eigen/Dense>
 #include <Eigen/Geometry>
 #include <robotiq_2f_gripper_control/Robotiq2FGripper_robot_output.h>
 #include <process_robot_data.h>
+#include <config.h>
 
 typedef struct {
   Eigen::Matrix<double,6,1> pose;
@@ -37,9 +39,9 @@ void ResultCallback(const std_msgs::Float64::ConstPtr& msg) {
 void PointCallback(const std_msgs::Float64MultiArray::ConstPtr& msg) {
     int len;
     std::vector<double> pt_3D = msg->data;
-    ROS_INFO("I heard Result Point3D!");
+    ROS_INFO("I heard Result Point3D!  %f, %f, %f, %f, %f, %f, %d", pt_3D[0], pt_3D[1], pt_3D[2], pt_3D[3], pt_3D[4], pt_3D[5], msg->data.size());
     len = msg->data.size();
-    Point3D = Eigen::Map<Eigen::MatrixXd> (pt_3D.data(), len / 3, 3);
+    Point3D = Eigen::Map<Eigen::MatrixXd> (&pt_3D[0], 3, len / 3);
 }
 
 //旋转矢量到四元数
@@ -68,6 +70,8 @@ Eigen::Vector3d rotationMatrix_Vec(Eigen::Matrix3d rotation_matrix) {
     Eigen::Vector3d rot_vec(rotation_vector.angle() * rotation_vector.axis());
     return rot_vec;
 }
+
+
 int main(int argc, char** argv) {
     //基础类初始化
     Process_Robot_Data URData;
@@ -77,6 +81,8 @@ int main(int argc, char** argv) {
     ros::NodeHandle n;
     ros::Subscriber URDataSub = n.subscribe("ur_data", 100, &Process_Robot_Data::robotDataCallback, &URData);
     ros::Publisher  urConParPub = n.advertise<hrc::RobotControl>("ur_control", 100);
+    ros::Publisher GripSigPub = n.advertise<std_msgs::Bool>("/GripSig", 1);
+    std_msgs::Bool GripSigMsg;
     ros::Subscriber PositionLength_Sub = n.subscribe("/PositionLengthNode", 10, &PosLenCallback);
     ros::Subscriber Result_Sub = n.subscribe("/result", 10, &ResultCallback);
     ros::Subscriber Point_Sub = n.subscribe("/Point3D", 1, &PointCallback);
@@ -107,6 +113,7 @@ int main(int argc, char** argv) {
     //等待机器人到达初始位姿
     //在ur_move.cpp中，包含机械臂运动到初始位姿的控制代码，故这里没有控制机械臂运动的代码
     int i = 0;
+    // usleep(3000);
     while(!URData.isReachTargetPose(status.pose,0.001) && ros::ok()) {
         usleep(1000);
         if(i++ > 6000) {
@@ -114,27 +121,42 @@ int main(int argc, char** argv) {
         return 0;
         }
     }
-
+    Eigen::Matrix<double,4,4> T_robot_flange;
+    T_robot_flange << -1, 0, 0, 0.2, 
+                                            0, 1, 0, -0.5, 
+                                            0, 0, -1, 0.3,
+                                            0, 0, 0, 1;
     while(ros::ok()) {
+        //ROS_INFO("flag : %d", flag);
         //当获取到相机发布的位姿信息后，只需要将信息存储，当接收到分析结果时，开始进行轨迹规划并运动
         if(flag) {
+            
             //结果是第i个物块
             int i;
             for (i = 0 ; i < 5 ; i++) {
                 if(result == fre[i])
                     break;
             }
+            ROS_INFO("I = %d", i);
             //目标抓取姿态为绕x轴旋转180度
             Eigen::Matrix3d gripPose;
             Eigen::Vector3d rotVec;
             gripPose << 1, 0, 0,
                                     0, -1, 0,
                                     0, 0, -1;
+                                      
             rotVec = rotationMatrix_Vec(gripPose);
-            status.pose << Point3D(i, 0), Point3D(i, 1), Point3D(i, 2) + 0.5,
+            Eigen::Matrix<double, 4, 1>  Pt_TCL, Pt_Base;
+            Pt_TCL  << Point3D(0, i), Point3D(1, i), Point3D(2, i), 1.0;
+            
+            ROS_INFO("Pt_TCL : %f, %f, %f", Pt_TCL(0, 0), Pt_TCL(1, 0), Pt_TCL(2, 0));     
+            Pt_Base = T_robot_flange * Pt_TCL;
+            status.pose << Pt_Base(0, 0), Pt_Base(1, 0), Pt_Base(2, 0) + 0.4,
                                             rotVec(0), rotVec(1), rotVec(2);
+            ROS_INFO("Pt_Base : %f, %f, %f", Pt_Base(0,0), Pt_Base(1, 0), Pt_Base(2, 0));                             
             URMove.sendPoseMsg(urConParPub, status.pose);
             i = 0;
+            
             while(!URData.isReachTargetPose(status.pose,0.001) && ros::ok()) {
                 usleep(1000);
                 if(i++ > 6000) {
@@ -145,12 +167,13 @@ int main(int argc, char** argv) {
             ROS_INFO("已到达目标物体上方！");
 
             //关闭夹爪
-            GripperOutput.rPR = 200;
+            GripperOutput.rPR = 160;
             grip_Pub.publish(GripperOutput);
             sleep(1);
             ROS_INFO("夹爪已闭合，将回到初始位置！");
             //回到初始点处
             status.pose << Eigen::Map<Eigen::MatrixXd>(&initPose[0], 6, 1);
+            URMove.sendPoseMsg(urConParPub, status.pose);
             i = 0;
             while(!URData.isReachTargetPose(status.pose,0.001) && ros::ok()) {
                 usleep(1000);
@@ -164,7 +187,10 @@ int main(int argc, char** argv) {
             grip_Pub.publish(GripperOutput);
             sleep(1);
             ROS_INFO("已回到初始位置，打开夹爪准备下一次抓取！");
-
+            //抓取结束，发布可进行下一次抓取的信号
+            GripSigMsg.data = 1;
+            GripSigPub.publish(GripSigMsg);
+            flag = 0;
         }
         loop_rate.sleep();
         ros::spinOnce();

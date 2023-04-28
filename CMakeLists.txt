@@ -248,6 +248,12 @@ target_link_libraries(col_align_dep
 target_link_libraries(col_align_dep /opt/ros/melodic/lib/libmessage_filters.so)
 target_link_libraries(col_align_dep /opt/ros/melodic/lib/libcv_bridge.so)
 
+add_executable(test_position src/test_position.cpp)
+target_link_libraries(test_position
+    ${catkin_LIBRARIES}
+    ${OpenCV_LIBS}
+)
+
 add_executable(node_pic_cpp2 src/node_pic_cpp2.cpp)
 target_link_libraries(node_pic_cpp2
     ${catkin_LIBRARIES})

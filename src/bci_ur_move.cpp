@@ -90,6 +90,8 @@ int main(int argc, char** argv) {
     ros::AsyncSpinner AS(1);
     AS.start();
 
+    setlocale(LC_CTYPE, "zh_CN.utf8");
+
     //初始化夹爪相关数据类型
     ros::Publisher grip_Pub = n.advertise<robotiq_2f_gripper_control::Robotiq2FGripper_robot_output>("/Robotiq2FGripperRobotOutput", 10);
     robotiq_2f_gripper_control::Robotiq2FGripper_robot_output GripperOutput;
@@ -158,7 +160,7 @@ int main(int argc, char** argv) {
             
             ROS_INFO("Pt_TCL : %f, %f, %f", Pt_TCL(0, 0), Pt_TCL(1, 0), Pt_TCL(2, 0));     
             Pt_Base = T_robot_flange * Pt_TCL;
-            status.pose << Pt_Base(0, 0) - 0.02, Pt_Base(1, 0), Pt_Base(2, 0) + 0.17,
+            status.pose << Pt_Base(0, 0) , Pt_Base(1, 0), Pt_Base(2, 0) + 0.17,
                                             rotVec(0), rotVec(1), rotVec(2);
             ROS_INFO("Pt_Base : %f, %f, %f", Pt_Base(0,0), Pt_Base(1, 0), Pt_Base(2, 0));                             
             URMove.sendPoseMsg(urConParPub, status.pose);

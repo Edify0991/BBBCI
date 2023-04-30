@@ -93,7 +93,7 @@ int main(int argc, char** argv) {
     //初始化夹爪相关数据类型
     ros::Publisher grip_Pub = n.advertise<robotiq_2f_gripper_control::Robotiq2FGripper_robot_output>("/Robotiq2FGripperRobotOutput", 10);
     robotiq_2f_gripper_control::Robotiq2FGripper_robot_output GripperOutput;
-    GripperOutput.rACT = 1;
+    GripperOutput.rACT = 0;
     GripperOutput.rGTO = 1;
     GripperOutput.rATR = 0;
     GripperOutput.rPR = 0;      //0时打开，255时完全闭合
@@ -101,6 +101,13 @@ int main(int argc, char** argv) {
     GripperOutput.rFR = 150;
     grip_Pub.publish(GripperOutput);
 
+    GripperOutput.rACT = 1;
+    GripperOutput.rGTO = 1;
+    GripperOutput.rATR = 0;
+    GripperOutput.rPR = 0;      //0时打开，255时完全闭合
+    GripperOutput.rSP = 255;
+    GripperOutput.rFR = 150;
+    grip_Pub.publish(GripperOutput);
     //五个物块序号对应的闪烁频率
     double fre[5] = {8, 10, 12, 14, 16};
 
@@ -151,7 +158,7 @@ int main(int argc, char** argv) {
             
             ROS_INFO("Pt_TCL : %f, %f, %f", Pt_TCL(0, 0), Pt_TCL(1, 0), Pt_TCL(2, 0));     
             Pt_Base = T_robot_flange * Pt_TCL;
-            status.pose << Pt_Base(0, 0), Pt_Base(1, 0), Pt_Base(2, 0) + 0.4,
+            status.pose << Pt_Base(0, 0) - 0.02, Pt_Base(1, 0), Pt_Base(2, 0) + 0.17,
                                             rotVec(0), rotVec(1), rotVec(2);
             ROS_INFO("Pt_Base : %f, %f, %f", Pt_Base(0,0), Pt_Base(1, 0), Pt_Base(2, 0));                             
             URMove.sendPoseMsg(urConParPub, status.pose);
@@ -167,7 +174,7 @@ int main(int argc, char** argv) {
             ROS_INFO("已到达目标物体上方！");
 
             //关闭夹爪
-            GripperOutput.rPR = 160;
+            GripperOutput.rPR = 250;
             grip_Pub.publish(GripperOutput);
             sleep(1);
             ROS_INFO("夹爪已闭合，将回到初始位置！");

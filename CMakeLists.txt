@@ -266,8 +266,8 @@ target_link_libraries(ur5_test_go_home_up ${catkin_LIBRARIES})
 
 add_executable(bci_ur_actual src/bci_ur_move.cpp)
 target_link_libraries(bci_ur_actual 
-    process_robot_data
     ${catkin_LIBRARIES}
+    ur_rtde::rtde
 )
 
 ## Rename C++ executable without prefix

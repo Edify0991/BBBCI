@@ -1,10 +1,10 @@
 #include "bci_grip/subpicpubsig.h"
 //相机内参(待修正)
 const double camera_factor = 1000; 
-const double camera_cx = 330.9287109375;
-const double camera_cy = 237.5426483154297;
-const double camera_fx = 599.3461303710938;
-const double camera_fy = 599.8165893554688;
+const double camera_cx = 326.3896484375;
+const double camera_cy = 245.33595275878906;
+const double camera_fx = 621.5462646484375;
+const double camera_fy = 621.89404296875;
 
 void subpicpubsiger::callback(const sensor_msgs::ImageConstPtr& depth_img, const sensor_msgs::ImageConstPtr& color_img)
 {
@@ -38,9 +38,9 @@ subpicpubsiger::subpicpubsiger() : it(nh)//, rtde_control("192.168.0.103"), rtde
     sync_.reset(new Sync(MySyncPolicy(1), depth_sub, image_sub));
     sync_->registerCallback(boost::bind(&subpicpubsiger::callback, this, _1, _2));
     //定义手眼标定矩阵
-    hand_eye << 0.03652324735602511, 0.9992383849468689, -0.01708711378029354, -0.01152133440713272,
- -0.999279139260506, 0.03666030789306746, 0.01557516553304576, -0.08730347286770529,
- 0.01591856826922698, 0.01629029691073703, 0.9996163145523158, 0.01824913725561628,
+    hand_eye <<  0.9996532550745072, -0.02317946544819485, -0.0007832751172949938, -0.03285387843722515,
+ 0.02332512799434242, 0.9998527455732329, 0.005068692749074222, -0.09763831111975443,
+ 0.0006542482960660848, -0.005224438026587358, 0.9999262848847731, 0.0239459468258103,
  0, 0, 0, 1;
 }
 
@@ -144,13 +144,15 @@ void subpicpubsiger::process_pic(cv::Mat color_image)
             PositionLength_Array.push_back(cpt.y);
             //计算图像中物块中心点实际空间位置
             geometry_msgs::Point p, Point_Msg;
-            ROS_INFO("DEPTH : %f",depth_pic.ptr<float>(int(cpt.x))[int(cpt.y)]);
+            //############################注意图像行列顺序与xy顺序！！！！！！！！！！！！！！！！！！########################
+            ROS_INFO("DEPTH : %f",depth_pic.ptr<float>(int(cpt.y))[int(cpt.x)]);
+            ROS_INFO("像素坐标系：%f, %f,", cpt.x, cpt.y);
             if(depth_pic.ptr<float>(int(cpt.x))[int(cpt.y)] >0 &&  depth_pic.ptr<float>(int(cpt.x))[int(cpt.y)] <= 4096){
-                float d = depth_pic.ptr<float>(int(cpt.x))[int(cpt.y)];//ushort d = depth_pic.ptr<ushort>(m)[n];
+                float d = depth_pic.ptr<float>(int(cpt.y))[int(cpt.x)];//ushort d = depth_pic.ptr<ushort>(m)[n];
                 
                 p.z = double(d) / camera_factor;
-                p.x = (int(cpt.y) - camera_cx) * p.z / camera_fx;
-                p.y = (int(cpt.x) - camera_cy) * p.z / camera_fy;
+                p.x = (int(cpt.x) - camera_cx) * p.z / camera_fx;
+                p.y = (int(cpt.y) - camera_cy) * p.z / camera_fy;
                 
                 Eigen::Matrix<double, 4, 1>  Pt_Camera, Pt_Base, Pt_TCL;
                 Pt_Camera << p.x, p.y, p.z, 1.0;

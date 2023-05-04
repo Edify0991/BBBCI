@@ -36,7 +36,7 @@ void on_mouse(int event, int x, int y, int flags, void* ustc)
 int main(int argc, char** argv)
 {
     ros::init(argc, argv, "test_pos");
-	src = imread("/home/edifier/code/catkin_ws/src/bci_grip/src/pic/imgcolor001.jpg", 1);
+	src = imread("/home/edifier/code/catkin_ws/src/bci_grip/src/pic/imgcolor000.jpg", 1);
 
 	cvNamedWindow("src");
 	cvSetMouseCallback("src", on_mouse, 0);//关键内置函数

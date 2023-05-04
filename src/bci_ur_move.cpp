@@ -7,8 +7,22 @@
 #include <Eigen/Dense>
 #include <Eigen/Geometry>
 #include <robotiq_2f_gripper_control/Robotiq2FGripper_robot_output.h>
-#include <process_robot_data.h>
 #include <config.h>
+#include <ur_rtde/rtde_receive_interface.h>
+#include <ur_rtde/rtde_control_interface.h>
+#include <tf2_ros/transform_listener.h>
+
+using namespace ur_rtde;
+// using namespace std;
+
+# define USE_UR_SIM 0
+#if USE_UR_SIM
+RTDEControlInterface rtde_control("127.0.0.1");
+//ur_rtde::RTDEReceiveInterface rtde_receive("127.0.0.1");
+#else
+RTDEControlInterface rtde_control("192.168.0.1");
+ur_rtde::RTDEReceiveInterface rtde_receive("192.168.0.1");
+#endif
 
 typedef struct {
   Eigen::Matrix<double,6,1> pose;
@@ -71,24 +85,56 @@ Eigen::Vector3d rotationMatrix_Vec(Eigen::Matrix3d rotation_matrix) {
     return rot_vec;
 }
 
+//四元数转换为旋转矩阵
+Eigen::Matrix3d quaternion_rotationMatrix(Eigen::Quaterniond quaternion)
+{
+  return quaternion.toRotationMatrix();
+}
+
+//获取基座标系base下末端坐标系tool0的位置pose_t和姿态pose_r（旋转矩阵）
+int getPose(const tf2_ros::Buffer &tfBuffer_, Eigen::VectorXd &pose_t, Eigen::Matrix3d &pose_r)
+{
+    std::vector<double> nowUrPose;
+    nowUrPose = rtde_receive.getActualTCPPose();
+    pose_t = Eigen::Map<Eigen::Matrix<double,3,1>>(&nowUrPose[0],3);
+    Eigen::Matrix<double,3,1> tmpDatar;
+    tmpDatar = Eigen::Map<Eigen::Matrix<double,3,1>>(&nowUrPose[3],3);
+    Eigen::Quaterniond quaternion=rotationVector_quaternion(tmpDatar);
+    pose_r=quaternion_rotationMatrix(quaternion);
+    Eigen::Matrix<double,3,1> tmpDatar1;
+    std::cout << "pose_r" << pose_r << std::endl;
+
+
+   //joint
+    std::vector<double> nowUrjoint;
+    nowUrjoint = rtde_receive.getActualQ();
+    Eigen::VectorXd joint;
+    joint = Eigen::Map<Eigen::Matrix<double,6,1>>(&nowUrjoint[0], 6);
+    std::cout << "joint:" << joint << std::endl;
+    return 0;
+}
 
 int main(int argc, char** argv) {
-    //基础类初始化
-    Process_Robot_Data URData;
-    Robot_Move URMove;
     //ros初始化
     ros::init(argc, argv, "bci_ur_actual");
     ros::NodeHandle n;
-    ros::Subscriber URDataSub = n.subscribe("ur_data", 100, &Process_Robot_Data::robotDataCallback, &URData);
-    ros::Publisher  urConParPub = n.advertise<hrc::RobotControl>("ur_control", 100);
     ros::Publisher GripSigPub = n.advertise<std_msgs::Bool>("/GripSig", 1);
     std_msgs::Bool GripSigMsg;
     ros::Subscriber PositionLength_Sub = n.subscribe("/PositionLengthNode", 10, &PosLenCallback);
     ros::Subscriber Result_Sub = n.subscribe("/result", 10, &ResultCallback);
     ros::Subscriber Point_Sub = n.subscribe("/Point3D", 1, &PointCallback);
+
+    tf2_ros::Buffer tfBuffer;
+    tf2_ros::TransformListener tfListener(tfBuffer);  //获取机械臂末端在基坐标系下的位姿
+
     ros::Rate loop_rate(CTRL_FREQ);
+
+
     ros::AsyncSpinner AS(1);
     AS.start();
+
+    double speed=0.05;
+    double acceleration=0.05;
 
     setlocale(LC_CTYPE, "zh_CN.utf8");
 
@@ -110,32 +156,35 @@ int main(int argc, char** argv) {
     GripperOutput.rSP = 255;
     GripperOutput.rFR = 150;
     grip_Pub.publish(GripperOutput);
+
+    Eigen::Matrix3d pose_r = Eigen::MatrixXd::Zero(3, 3);						//本周期获取的姿态
+    Eigen::VectorXd pose_t = Eigen::MatrixXd::Zero(3, 1);						//理想位置
+
     //五个物块序号对应的闪烁频率
     double fre[5] = {8, 10, 12, 14, 16};
 
     /**************这一步，先运动到物块上方****************/
     //定义机器人初始位姿，速度
-    std::vector<double> initPose = INITPOSE;
+    std::vector<double> initPose = {0.200000, -0.499992, 0.300033,  -0.000153, 3.140025, -0.000192};
+    std::vector<double> pose;
     Status_Cart status;
     status.pose << Eigen::Map<Eigen::MatrixXd>(&initPose[0], 6, 1);
     status.speed << 0.0,0.0,0.0,0.0,0.0,0.0;
+   
     //等待机器人到达初始位姿
-    //在ur_move.cpp中，包含机械臂运动到初始位姿的控制代码，故这里没有控制机械臂运动的代码
-    int i = 0;
+    rtde_control.servoL(initPose, speed, acceleration, 1,  0.03, 600);
+    sleep(4);
     // usleep(3000);
-    while(!URData.isReachTargetPose(status.pose,0.001) && ros::ok()) {
-        usleep(1000);
-        if(i++ > 6000) {
-        printf("机器人没有到达指定初始位置\n");
-        return 0;
-        }
-    }
-    Eigen::Matrix<double,4,4> T_robot_flange;
-    T_robot_flange << -1, 0, 0, 0.2, 
-                                            0, 1, 0, -0.5, 
-                                            0, 0, -1, 0.3,
-                                            0, 0, 0, 1;
+
+    
     while(ros::ok()) {
+        Eigen::Matrix<double,4,4> T_robot_flange;
+        T_robot_flange << -1, 0, 0, 0.2, 
+                                                0, 1, 0, -0.5, 
+                                                0, 0, -1, 0.3,
+                                                0, 0, 0, 1;
+        //getPose(tfBuffer, pose_t, pose_r);
+        //T_robot_flange << pose_r, pose_t, 0, 0, 0, 1;
         //ROS_INFO("flag : %d", flag);
         //当获取到相机发布的位姿信息后，只需要将信息存储，当接收到分析结果时，开始进行轨迹规划并运动
         if(flag) {
@@ -160,19 +209,15 @@ int main(int argc, char** argv) {
             
             ROS_INFO("Pt_TCL : %f, %f, %f", Pt_TCL(0, 0), Pt_TCL(1, 0), Pt_TCL(2, 0));     
             Pt_Base = T_robot_flange * Pt_TCL;
-            status.pose << Pt_Base(0, 0) , Pt_Base(1, 0), Pt_Base(2, 0) + 0.17,
-                                            rotVec(0), rotVec(1), rotVec(2);
-            ROS_INFO("Pt_Base : %f, %f, %f", Pt_Base(0,0), Pt_Base(1, 0), Pt_Base(2, 0));                             
-            URMove.sendPoseMsg(urConParPub, status.pose);
+            status.pose << Pt_Base(0, 0) , Pt_Base(1, 0), Pt_Base(2, 0) + 0.2,
+                                            0, 3.14, 0;
+            pose.clear();
+            pose = {Pt_Base(0, 0) , Pt_Base(1, 0), Pt_Base(2, 0) + 0.25, 0, 3.14, 0};
+            ROS_INFO("Pt_Base : %f, %f, %f", Pt_Base(0,0), Pt_Base(1, 0), Pt_Base(2, 0));      
             i = 0;
+            rtde_control.servoL(pose, speed, acceleration, 1,  0.03, 600);
+            sleep(4);
             
-            while(!URData.isReachTargetPose(status.pose,0.001) && ros::ok()) {
-                usleep(1000);
-                if(i++ > 6000) {
-                printf("机器人没有到达指定初始位置\n");
-                return 0;
-                }
-            }
             ROS_INFO("已到达目标物体上方！");
 
             //关闭夹爪
@@ -182,15 +227,9 @@ int main(int argc, char** argv) {
             ROS_INFO("夹爪已闭合，将回到初始位置！");
             //回到初始点处
             status.pose << Eigen::Map<Eigen::MatrixXd>(&initPose[0], 6, 1);
-            URMove.sendPoseMsg(urConParPub, status.pose);
-            i = 0;
-            while(!URData.isReachTargetPose(status.pose,0.001) && ros::ok()) {
-                usleep(1000);
-                if(i++ > 6000) {
-                printf("机器人没有到达指定初始位置\n");
-                return 0;
-                }
-            }
+            rtde_control.servoL(initPose, speed, acceleration, 1,  0.03, 600);
+            sleep(4);
+
             //松开夹爪，准备进行下一次抓取
             GripperOutput.rPR = 0;
             grip_Pub.publish(GripperOutput);

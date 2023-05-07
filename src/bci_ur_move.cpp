@@ -148,7 +148,7 @@ int main(int argc, char** argv) {
     GripperOutput.rSP = 255;
     GripperOutput.rFR = 150;
     grip_Pub.publish(GripperOutput);
-
+    sleep(2);
     GripperOutput.rACT = 1;
     GripperOutput.rGTO = 1;
     GripperOutput.rATR = 0;
@@ -156,16 +156,17 @@ int main(int argc, char** argv) {
     GripperOutput.rSP = 255;
     GripperOutput.rFR = 150;
     grip_Pub.publish(GripperOutput);
-
+    sleep(2);
     Eigen::Matrix3d pose_r = Eigen::MatrixXd::Zero(3, 3);						//本周期获取的姿态
     Eigen::VectorXd pose_t = Eigen::MatrixXd::Zero(3, 1);						//理想位置
 
     //五个物块序号对应的闪烁频率
-    double fre[5] = {8, 10, 12, 14, 16};
+    double fre[5] = {9, 10, 11, 12, 13};
 
     /**************这一步，先运动到物块上方****************/
     //定义机器人初始位姿，速度
     std::vector<double> initPose = {0.200000, -0.499992, 0.300033,  -0.000153, 3.140025, -0.000192};
+    std::vector<double> endPose = {0.213563, -0.303634, 0.091221,  -0.000080, 3.140102, -0.000093};
     std::vector<double> pose;
     Status_Cart status;
     status.pose << Eigen::Map<Eigen::MatrixXd>(&initPose[0], 6, 1);
@@ -212,9 +213,8 @@ int main(int argc, char** argv) {
             status.pose << Pt_Base(0, 0) , Pt_Base(1, 0), Pt_Base(2, 0) + 0.2,
                                             0, 3.14, 0;
             pose.clear();
-            pose = {Pt_Base(0, 0) , Pt_Base(1, 0), Pt_Base(2, 0) + 0.25, 0, 3.14, 0};
-            ROS_INFO("Pt_Base : %f, %f, %f", Pt_Base(0,0), Pt_Base(1, 0), Pt_Base(2, 0));      
-            i = 0;
+            pose = {Pt_Base(0, 0) , Pt_Base(1, 0), Pt_Base(2, 0) + 0.14, 0, 3.14, 0};
+            ROS_INFO("Pt_Base : %f, %f, %f", Pt_Base(0,0), Pt_Base(1, 0), Pt_Base(2, 0)); 
             rtde_control.servoL(pose, speed, acceleration, 1,  0.03, 600);
             sleep(4);
             
@@ -228,13 +228,23 @@ int main(int argc, char** argv) {
             //回到初始点处
             status.pose << Eigen::Map<Eigen::MatrixXd>(&initPose[0], 6, 1);
             rtde_control.servoL(initPose, speed, acceleration, 1,  0.03, 600);
-            sleep(4);
+            sleep(2);
 
+            //将物块放到最终的位置
+            rtde_control.servoL(endPose, speed, acceleration, 1,  0.03, 600);
+            sleep(2);
             //松开夹爪，准备进行下一次抓取
             GripperOutput.rPR = 0;
             grip_Pub.publish(GripperOutput);
             sleep(1);
+
+            //回到初始点处 
+            status.pose << Eigen::Map<Eigen::MatrixXd>(&initPose[0], 6, 1);
+            rtde_control.servoL(initPose, speed, acceleration, 1,  0.03, 600);
+            sleep(2);
             ROS_INFO("已回到初始位置，打开夹爪准备下一次抓取！");
+
+            
             //抓取结束，发布可进行下一次抓取的信号
             GripSigMsg.data = 1;
             GripSigPub.publish(GripSigMsg);

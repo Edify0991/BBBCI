@@ -75,7 +75,7 @@ void subpicpubsiger::process_pic(cv::Mat color_image)
     //resize(dep_image, Img1, cv::Size(width, height));
 
     //蓝
-	cv::Scalar blue_scalarL = cv::Scalar(60, 150, 46);
+	cv::Scalar blue_scalarL = cv::Scalar(10, 40, 46);
 	cv::Scalar blue_scalarH = cv::Scalar(124, 255, 255);
 
     cv::Mat dst1, dst2, dst;
@@ -233,6 +233,20 @@ void subpicpubsiger::process_pic(cv::Mat color_image)
         strname = strimg1_1 + strnum + strimg2;
         pcname = strname.data();
         imwrite(pcname, Img);
+        ss.clear();
+        ss << num;
+        ss >> strnum;
+        num++;  //保存图片的数目
+        strname = strimg1_1 + strnum + strimg2;
+        pcname = strname.data();
+        imwrite(pcname, erode_hsv);
+        ss.clear();
+        ss << num;
+        ss >> strnum;
+        num++;  //保存图片的数目
+        strname = strimg1_1 + strnum + strimg2;
+        pcname = strname.data();
+        imwrite(pcname, drawing);
         //sig_process.publish(sigmsg);    //发布图像处理结束信号
     }
     color_pic.release();

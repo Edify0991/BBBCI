@@ -39,7 +39,7 @@ int main(int argc, char** argv)
 	src = imread("/home/edifier/code/catkin_ws/src/bci_grip/src/pic/imgcolor000.jpg", 1);
 
 	cvNamedWindow("src");
-	cvSetMouseCallback("src", on_mouse, 0);//关键内置函数
+	// cvSetMouseCallback("src", on_mouse, 0);//关键内置函数
 
 	imshow("src", src);
 
@@ -53,7 +53,7 @@ int main(int argc, char** argv)
     //imshow("pic_win1", Img);
 
     //蓝
-	cv::Scalar blue_scalarL = cv::Scalar(60, 150, 46);
+	cv::Scalar blue_scalarL = cv::Scalar(10, 40, 46);
 	cv::Scalar blue_scalarH = cv::Scalar(124, 255, 255);
 
     cv::Mat dst1, dst2, dst;
@@ -63,16 +63,16 @@ int main(int argc, char** argv)
     //imshow("gaussian blur", dst);
 
     cvtColor(dst, img_hsv, cv::COLOR_BGR2HSV);
-    imshow("hsv", img_hsv);
+    //imshow("hsv", img_hsv);
 
     //蓝
 	cv::inRange(img_hsv, blue_scalarL, blue_scalarH, inRange_hsv);
-    cv::imshow("inRange_hsv", inRange_hsv);
+    //cv::imshow("inRange_hsv", inRange_hsv);
     
     cv::Mat element = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(2, 2));//size(5,5)是马赛克的矩形的大小
     cv::dilate(inRange_hsv, dialationImage, element);
     cv::erode(dialationImage, erode_hsv, element);
-    cv::imshow("erode_hsv", erode_hsv);
+    //cv::imshow("erode_hsv", erode_hsv);
 
     std::vector<std::vector<cv::Point>> contours;
 	std::vector<cv::Vec4i> hierarchy;
@@ -85,22 +85,23 @@ int main(int argc, char** argv)
         cv::Scalar color = cv::Scalar(255, 182, 193);
         cv::drawContours(drawing, contours, i, color, 2, 8, hierarchy, 0, cv::Point());
     }
-    cv::imshow("contours", drawing);
+    //cv::imshow("contours", drawing);
 
 	int min_area = 2000, index = 0;
     double imagearea;
     std::vector<double> PositionLength_Array, Point_Array;
     PositionLength_Array.clear();
     Point_Array.clear();
-    std::vector<double> nowUrPose;
+    
     double angle;
     for (int i = 0; i < contours.size(); i++)
     {
         imagearea = cv::contourArea(contours[i]);
         if (imagearea > min_area)
-        {
+        {printf("aha");
             cv::RotatedRect rrect = minAreaRect(contours[i]);
             cv::Point2f points[4];
+            printf("ANGLE:%f", rrect.angle);
             rrect.points(points);   //读取最小外接矩形的四个顶点
             cv::Point2f cpt = rrect.center;
             ROS_INFO("%f, %f", cpt.x, cpt.y);
@@ -116,7 +117,13 @@ int main(int argc, char** argv)
             }
             //绘制矩形中心
             cv::circle(Img, cpt, 2, cv::Scalar(0, 255, 0), 2, 8, 0);
-            
+            cv::putText(Img,
+                                    std::to_string(rrect.angle).substr(0, 5),
+                                    cv::Point(cpt.x, cpt.y),
+                                    cv::FONT_HERSHEY_SIMPLEX,
+                                    2,
+                                    cv::Scalar(0, 255, 0),
+                                    2);
             double length = 1000;
             for(int j = 0 ; j < 4 ; j++)
             {//取四边形最短的边长为按钮标记边长
@@ -129,7 +136,7 @@ int main(int argc, char** argv)
         }
     }
 
-	cvWaitKey(0);
+	//cvWaitKey(0);
 	cvDestroyAllWindows();
 	return 0;
 }

@@ -1,0 +1,442 @@
+function GripSig_Callback(message, ~)
+%UNTITLED 此处显示有关此函数的摘要
+%   此处显示详细说明
+    global changesig
+    changesig = message.LatestMessage.Data;
+end
+
+
+%%
+% pyenv('Version','2.7')
+% pyenv('Version','D:\Anaconda\python.exe')
+%% Clear the workspace
+clc
+clear
+close all;
+% 删除全局变量
+clear global win;
+clear global sig;
+clear global dingding;
+clear global Pic ExpSceneTexture;
+clear global Pos Flash_Position_Black object_num result changesig;
+% PTB相关
+clearvars;
+sca;
+% 删除所有定时器
+delete(timerfind);
+% 启动当前ROS节点 to start the global node and connect to a ROS network.
+%setenv('ROS_MASTER_URI','http://192.169.0.1:11311')
+%setenv('ROS_IP','192.169.0.2')
+rosinit;
+
+%% Here we call some default settings for setting up Psychtoolbox  --- help PsychDefaultSetup
+Screen('Preference', 'SkipSyncTests', 2); % 1-->2 可解决PsychToolBox感叹号闪烁问题
+PsychDefaultSetup(2); % help PsychDefaultSetup
+% Get the screen numbers
+screens = Screen('Screens');
+% Draw to the external screen if avaliable
+screenNumber = max(screens); % 当前屏幕为 screens, 拓展屏为 screens-1
+% Open an on screen window
+white = WhiteIndex(screenNumber);
+black = BlackIndex(screenNumber);
+grey = white / 2;
+global win
+[win, winRect] = PsychImaging('OpenWindow', screenNumber, black);
+% Get the size of the on screen window
+[screenXpixels, screenYpixels] = Screen('WindowSize', win);
+% Get the centre coordinate of the window
+[xCenter, yCenter] = RectCenter(winRect);
+Screen('TextFont', win, 'Ariel');
+Screen('TextSize', win, 50);
+% Query the frame duration
+ifi = Screen('GetFlipInterval', win);
+% Set up alpha-blending for smooth (anti-aliased) lines
+% 为平滑的(抗锯齿的)线条设置阿尔法混合
+Screen('BlendFunction', win, 'GL_SRC_ALPHA', 'GL_ONE_MINUS_SRC_ALPHA');
+% Retreive the maximum priority number and set max priority
+topPriorityLevel = MaxPriority(win);
+Priority(topPriorityLevel);% 将PTB优先级设置为最高，使其先于其他系统和应用程序。
+
+%% Define some keyboard keys
+KbName('UnifyKeyNames');%定义按键前最好都加上这一句话
+esc_key = KbName('escape');
+left_key = KbName('LeftArrow');
+right_key = KbName('RightArrow');
+up_key = KbName('UpArrow');
+down_key = KbName('DownArrow');
+space_key = KbName('space');
+
+%% Here we load in an image from file.
+theImage_PseudoKey = ['.' filesep 'PseudoKey.jpg'];
+Image_PseudoKey = imread(theImage_PseudoKey);
+% 尺寸重新设置
+Image_PseudoKey = imresize(Image_PseudoKey,[200,200],'bicubic');
+ImageSize_u_PseudoKey = size(Image_PseudoKey,2); %200 -x
+ImageSize_v_PseudoKey = size(Image_PseudoKey,1); %200 -y
+% Make the image into a texture 使图像成为一个纹理
+imageTexture_PseudoKey = Screen('MakeTexture', win, Image_PseudoKey);
+
+%% Position of the images [x1,y1,x2,y2] 左上+右下角
+Position_pseudo_U = [0, yCenter - ImageSize_v_PseudoKey/2, ImageSize_u_PseudoKey, yCenter + ImageSize_v_PseudoKey/2]; % 上
+Position_pseudo_R = [xCenter - ImageSize_u_PseudoKey/2, screenYpixels - ImageSize_v_PseudoKey, xCenter + ImageSize_u_PseudoKey/2, screenYpixels]; % 右
+Position_pseudo_D = [screenXpixels - ImageSize_u_PseudoKey, yCenter - ImageSize_v_PseudoKey/2, screenXpixels, yCenter + ImageSize_v_PseudoKey/2]; % 下
+Position_pseudo_L = [xCenter - ImageSize_u_PseudoKey/2, 0, xCenter + ImageSize_u_PseudoKey/2, ImageSize_v_PseudoKey]; % 左
+
+Position_pseudo_LU = [0, 0, ImageSize_u_PseudoKey, ImageSize_v_PseudoKey]; % 左上
+Position_pseudo_RU = [0, screenYpixels - ImageSize_v_PseudoKey, ImageSize_u_PseudoKey, screenYpixels]; % 右上
+Position_pseudo_RD = [screenXpixels - ImageSize_u_PseudoKey, screenYpixels - ImageSize_v_PseudoKey, screenXpixels, screenYpixels]; % 右下
+Position_pseudo_LD = [screenXpixels - ImageSize_u_PseudoKey, 0, screenXpixels, ImageSize_v_PseudoKey]; % 左下
+Flash_Position_Pseudo(1, :) = Position_pseudo_LU;
+Flash_Position_Pseudo(2, :) = Position_pseudo_RU;
+Flash_Position_Pseudo(3, :) = Position_pseudo_RD;
+Flash_Position_Pseudo(4, :) = Position_pseudo_LD;
+
+%%
+% try
+%% 创建rossubscriber进行"/StateResultNode"话题的订阅并用定时器实现循环订阅
+global sig dingding
+sig = 0; dingding = 0; % 全局在 StateResult_Callback 中
+StateResult_Sub = rossubscriber("/StateResultNode",@StateResult_Callback);
+pause(0.1); %可用 pause(0.1) 测试 rossubscriber 开启后一直在订阅消息
+% 如果没有 pause 或 pause时间太短，执行了 rossubscriber 也无法进入并执行相应回调函数
+disp(['开始闪烁，sig = ',num2str(sig)]);
+% 采用1s的定时器实现ROS中 ros::spin() 的功能
+timer_StateResult = timer('Period',1);
+timer_StateResult.ExecutionMode = 'FixedDelay';
+timer_StateResult.TimerFcn = { @StateResultDetect, sig };
+start(timer_StateResult);
+
+%% Our will fade in and out with a sine wave function 我们将用正弦波函数淡入淡出，进行伪密钥的闪烁刺激
+% See: http://en.wikipedia.org/wiki/Sine_wave
+amplitude = 0.5; %振幅
+freq_pre = 17;
+staP_pre = 0.0;
+angF_pre = 2 * pi * freq_pre;
+time1 = 0; %用于闪烁显示
+while(1)
+    [keyisdown, secs, keycode] = KbCheck;
+    if keycode(esc_key) %人为中断循环，结束循环
+        disp('Exit First While !');
+        break; % exit loop upon key press
+    end
+    thisC_pre = amplitude * sin(angF_pre * time1 + staP_pre) + amplitude;
+    Screen('DrawTexture', win, imageTexture_PseudoKey, [], Flash_Position_Pseudo(1, :),  0, [], thisC_pre);
+    Screen('DrawTexture', win, imageTexture_PseudoKey, [], Flash_Position_Pseudo(2, :),  0, [], thisC_pre);
+    Screen('DrawTexture', win, imageTexture_PseudoKey, [], Flash_Position_Pseudo(3, :),  0, [], thisC_pre);
+    Screen('DrawTexture', win, imageTexture_PseudoKey, [], Flash_Position_Pseudo(4, :),  0, [], thisC_pre);
+    Screen('Flip', win);
+    time1 = time1 + ifi; %用于闪烁显示
+    if(sig == 1 || keycode(down_key)) %人为中断循环，进入下一个阶段
+        disp('A state change has been detected !');
+        stop(timer_StateResult); %关闭了定时器，但是 节点 chatter 还是一直在订阅消息，因为一直有消息发布
+        break;
+    end
+end
+
+%% 伪密钥检测后，进入了下一个场景图片接收与显示的阶段
+% After the detection of the pseudo key,
+% the next stage of picture reception and display is entered
+Screen('FillRect',win,[0,0,0]); %将屏幕win涂成black[0,0,0];blue[0,0,1]
+Screen('Flip', win);
+% 以3秒为周期订阅物块的位置
+timer_PositionLength = timer('Period',1);
+timer_PositionLength.ExecutionMode = 'FixedDelay';
+timer_PositionLength.TimerFcn = { @PositionLengthDetect};
+start(timer_PositionLength);
+
+% 订阅图片，并且设置纹理以显示
+global Pic
+Pic = imread('CameraShooting.jpg'); % 初始化一下Pic 690x690x3 uint8
+Picture_Sub = rossubscriber("/PictureNode",@Picture_Callback);  %开启图像订阅节点
+global Pos
+PositionLength_Sub = rossubscriber('/PositionLengthNode',@PositionLength_Callback);
+pause(2); %可用 pause(0.01) 测试 rossubscriber 开启后一直在订阅消息
+% imshow(Pic);
+dingdingPos = Pos
+disp('The picture and position has indeed been gained !');
+
+% 尺寸重新设置，将订阅的图片占满屏幕
+[height, width, chan] = size(Pic);  %matlab读取图片三维矩阵大小，顺序为 高度 宽度 通道数
+resize_y = height * 2;
+resize_x = width * 2;
+ratio_x = resize_x / width; %如果需要放大图像，则计算图像放大的比例
+ratio_y = resize_y / height;
+ExpScene = imresize( Pic, [resize_y, resize_x], 'bicubic'); % [480,640]--->[720,960]
+global ExpSceneTexture
+ExpSceneTexture = Screen('MakeTexture', win, ExpScene); %将图像矩阵转换为OpenGL纹理并返回其句柄
+Position_ExpScene = [xCenter - resize_x / 2, yCenter - resize_y / 2, xCenter + resize_x / 2, yCenter + resize_y / 2];
+delta_pos = [xCenter - resize_x / 2, yCenter - resize_y / 2, xCenter - resize_x / 2, yCenter - resize_y / 2];   %图像中物块的位置相对屏幕中心的图像的偏移量
+Screen('DrawTexture', win, ExpSceneTexture, [], Position_ExpScene);
+Screen('Flip', win);
+disp('The picture has been displayed !');
+
+%% 加载并显示图片后，订阅图片中物块的位置
+% 黑色代表图片中的物块
+BlackImageLocation = ['.' filesep 'target_Black.jpg']; 
+BlackImage = imread(BlackImageLocation);
+% White 作为衬底
+WhiteImageLocation = ['.' filesep 'target_White.jpg'];
+WhiteImage = imread(WhiteImageLocation);
+% 红色代表注释选择后的目标
+RedImageLocation = ['.' filesep 'SmallRed.jpg'];
+RedImage = imread(RedImageLocation);
+
+%% 对图片中的物块进行闪烁刺激
+object_frequency = [9 10 11 12 13 14]; % 8个频率，最多8个物块
+object_angFreq = zeros(1,length(object_frequency));
+for i=1:1:length(object_frequency)
+    object_angFreq(i) = 2 * pi * object_frequency(i);
+end
+object_startPhase = [0.0 0.25 0.5 0.75 1.0 1.25 1.5 1.75]*pi; % 8个相位
+
+global changesig
+changesig = 1;
+GripSig_Sub = rossubscriber('/GripSig',@GripSig_Callback);
+pause(0.1);
+global result
+result = 0;
+Result_Sub = rossubscriber('/ResultNode',@Result_Callback);
+pause(0.01);
+
+global Flash_Position_Black object_num
+imageTexture_White = Screen('MakeTexture', win, WhiteImage);
+% 当信号处理结束分类结果出来后，才会进行红色色块的显示
+imageTexture_Red = Screen('MakeTexture', win, RedImage);
+time2 = 0;
+while(1) % 此循环为大循环，用于场景图片的刷新
+    [keyisdown, secs, keycode] = KbCheck;
+    if keycode(esc_key) %人为中断循环，结束循环
+        disp('Exit Big While !');
+        break; % exit loop upon key press
+    end
+    object_num = size(Pos,1)
+    disp(["Number of objects identified is ", num2str(object_num)]);
+    if object_num==0    %如果未识别到物体，或者还未订阅到消息，则跳过该次循环
+        break;
+    end
+    % 在一轮小循环中，如果没有抓取完毕，则changesig仍为0，只有在changesig为1时（抓取完毕）才会切换图片
+    if changesig == 1 %每一抓取实验前的初始化
+        result = 0;
+        object_num = size(Pos,1)
+        [height, width, chan] = size(Pic);  %matlab读取图片三维矩阵大小，顺序为 高度 宽度 通道数
+        resize_y2 = height * 2; % 480
+        resize_x2 = width * 2; % 640
+        ratio_x = resize_x2 / width;
+        ratio_y = resize_y2 / height;
+        Flash_Position_Black = zeros(object_num, 4);
+        Pos
+        imageTexture_Black = zeros(1, object_num);
+        for i = 1 : 1 : object_num
+            imageTexture_Black(i) = Screen('MakeTexture', win, BlackImage); %将图像矩阵转化为OpenGL纹理并返回其句柄。
+            Flash_Position_Black(i, :) = [ratio_x * (Pos(i, 1) - 50 / 2), ...
+                ratio_y * (Pos(i, 2) - 50 / 2), ...
+                ratio_x * (Pos(i, 1) + 50 / 2), ...
+                ratio_y * (Pos(i, 2) + 50 / 2)] + delta_pos; %每一个物块的位置
+        end
+        ExpScene = imresize( Pic,[resize_y2, resize_x2], 'bicubic'); % [480,640]--->720,960
+        ExpSceneTexture = Screen('MakeTexture', win, ExpScene);
+        Position_ExpScene = [xCenter - resize_x2 / 2, yCenter - resize_y2 / 2, ...
+            xCenter + resize_x2 / 2, yCenter + resize_y2 / 2];
+        changesig = 0;  % 重新变为不可改变图片的模式
+    end
+    
+    disp('Flash');
+    Flash_Position_Black
+    % red 用来存储第几张图片将变成红色
+    red = find(object_frequency == result) % 没有响应的结果，red为空
+    Screen('DrawTexture', win, ExpSceneTexture, [], Position_ExpScene);
+    for i = 1 : 1 : object_num
+        object_thisContrast(i)= amplitude * sin( object_angFreq(i)*time2 + object_startPhase(i) ) + amplitude;
+        if ~isempty(red) %如果red非空，即已经接收到结果信息
+            if i == red
+                Screen('DrawTexture', win, imageTexture_White, [], Flash_Position_Black(i,:));
+                Screen('DrawTexture', win, imageTexture_Red, [], Flash_Position_Black(i,:),  0, [], object_thisContrast(i));
+            else
+                Screen('DrawTexture', win, imageTexture_White, [], Flash_Position_Black(i,:));
+                Screen('DrawTexture', win, imageTexture_Black(i), [], Flash_Position_Black(i,:),  0, [], object_thisContrast(i));
+            end
+        else
+            Screen('DrawTexture', win, imageTexture_White, [], Flash_Position_Black(i,:));
+            Screen('DrawTexture', win, imageTexture_Black(i), [], Flash_Position_Black(i,:),  0, [], object_thisContrast(i));
+        end
+    end
+    Screen('Flip', win); % Flip to the screen
+    % Increment the time
+    time2 = time2 + ifi;
+end
+Screen('FillRect',win,[0,0,0]); %将屏幕win涂成black[0,0,0];blue[0,0,1]
+Screen('Flip', win);
+WaitSecs(2);
+%% Display End
+sca; %Clear the screen
+disp('End of the experiment!');
+stop(timerfind);
+delete(timerfind);
+
+% catch
+%     ShowCursor;
+%     Screen('CloseAll');%sca; %Clear the screen
+%     Priority(0);
+%     psychrethrow(psychlasterror);
+%     rosshutdown;
+%     stop(timerfind);
+%     delete(timerfind);
+% end
+
+
+%% @StateResultDetect
+function StateResultDetect( ~, ~, sig )
+pause(0.01);
+end
+
+%% @PositionLengthDetect
+function PositionLengthDetect( ~, ~)
+pause(0.01);
+end
+
+function Picture_Callback(message, ~)
+%UNTITLED2 此处显示有关此函数的摘要
+%   此处显示详细说明
+    global Pic
+    disp('Coming in the Picture_Callback !');
+%     ReceiveData = message.LatestMessage.Data;
+    Pic = readImage(message.LatestMessage);
+    disp('The picture has been gained !');
+%     imshow(Pic);
+%     widthPicture = ReceiveData(end, 1);
+%     heightPicture = ReceiveData(end-1, 1);
+%     PictureData = ReceiveData(1:end-2, 1);
+%     % 将 PictureData 重构为 (heightPicture,widthPicture,3) 的新的矩阵 Pic
+%     ReceivePicture = reshape(PictureData, heightPicture, widthPicture, 3);
+%     % 将图片转换位uint8的 Pic
+%     Pic = im2uint8(ReceivePicture);
+%     disp('The picture has been gained !');
+%     imshow(Pic);
+end
+
+
+
+function PositionLength_Callback(message, ~)
+%UNTITLED2 此处显示有关此函数的摘要
+%   此处显示详细说明
+    global Pos
+    ReceivePosLen = message.LatestMessage.Data;
+    % 将 ReceivePosLen 重构为 (length(ReceivePosLen)/3,3) 的新的矩阵 Pos
+    % length(ReceivePosLen)/3为物块个数，3表示位置x、y和矩形边长
+    Pos = reshape(ReceivePosLen, 3, length(ReceivePosLen)/3);
+    Pos = Pos';
+    disp('The position has been gained !');
+end
+
+function Result_Callback(message, ~)
+%UNTITLED 此处显示有关此函数的摘要
+%   此处显示详细说明
+    global result
+    result = message.LatestMessage.Data;
+end
+
+%% Make sure rosshutdown before run and rosinit
+clear;
+clc;
+setenv('ROS_MASTER_URI','http://192.168.1.2:11311')
+setenv('ROS_IP','192.168.1.2')
+rosinit;
+%% The image is captured and converted into an 64MultiArray
+sendPic = imread('CameraShooting.jpg');
+imshow(sendPic);
+sendPic = im2double(sendPic);
+[first, second, third] = size(sendPic);
+sendPic_reshape = reshape(sendPic, 1, first*second*third); % 将Pic重构为 (1,first*second*third) 的新的矩阵 Pic_reshape
+%% 创建节点并通过 '/pictureNode'话题进行发布
+Picture_Pub = rospublisher('/PictureNode',rostype.std_msgs_Float64MultiArray);
+Picture_Msg = rosmessage(Picture_Pub);
+%% 发布数据到节点的 '/PictureNode' 话题上
+sendPic_reshape_size = [sendPic_reshape,first,second]; 
+Picture_Msg.Data = sendPic_reshape_size;
+send(Picture_Pub,Picture_Msg);
+% rosshutdown;
+
+%% Make sure rosshutdown before run and rosinit
+clear;
+clc;
+setenv('ROS_MASTER_URI','http://192.168.1.2:11311')
+setenv('ROS_IP','192.168.1.2')
+rosinit;
+%% 创建节点并通过 '/StateResultNode'话题进行发布
+PositionLength_Pub = rospublisher('/PositionLengthNode',rostype.std_msgs_Float64MultiArray);
+PositionLength_Msg = rosmessage(PositionLength_Pub);
+%% 发布数据(图像中物块的位置及边长)到节点的 '/PositionLengthNode' 话题上
+PositionLength_Array = [600, 200, 50; 100, 350, 80; 300, 500, 100];
+[row, col] = size(PositionLength_Array);
+% 将 PositionLength_Array 重构为 (1,row*col) 的新的矩阵 PositionLength_reshape
+PositionLength_reshape = reshape(PositionLength_Array, 1, row * col);
+PositionLength_Msg.Data = PositionLength_reshape;
+send(PositionLength_Pub,PositionLength_Msg);
+pause(19);
+PositionLength_Array = [50, 200, 50; 50, 350, 40; 50, 500, 30];
+[row, col] = size(PositionLength_Array);
+% 将 PositionLength_Array 重构为 (1,row*col) 的新的矩阵 PositionLength_reshape
+PositionLength_reshape = reshape(PositionLength_Array, 1, row * col);
+PositionLength_Msg.Data = PositionLength_reshape;
+send(PositionLength_Pub,PositionLength_Msg);
+% rosshutdown;
+
+
+%% Make sure rosshutdown before run and rosinit
+clear;
+clc;
+rosinit;
+%% 创建节点并通过 '/StateResultNode'话题进行发布
+Result_Pub = rospublisher('/ResultNode',rostype.std_msgs_Float64);
+Result_Msg = rosmessage(Result_Pub);
+%% 发布数据(结果result)到节点的 '/ResultNode' 话题上
+pause(25);
+Result = 15;
+Result_Msg.Data = Result;
+send(Result_Pub,Result_Msg);
+pause(25);
+Result = 20;
+Result_Msg.Data = Result;
+send(Result_Pub,Result_Msg);
+%rosshutdown;
+
+%% Make sure rosshutdown before run and rosinit
+clear;
+clc;
+%rosinit;
+%% 创建节点并通过 '/StateResultNode'话题进行发布
+StateResult_Pub = rospublisher('/StateResultNode',rostype.std_msgs_Bool);
+StateResult_Msg = rosmessage(StateResult_Pub);
+%%
+i = 0;
+while(1)
+    i = i + 1;
+    StateResult_Msg.Data = 0;
+    % 发布数据到节点的 '/StateResultNode' 话题上
+    send(StateResult_Pub,StateResult_Msg);
+    if i>30000
+        StateResult_Msg.Data = 1;
+        % 发布数据到节点的 '/StateResultNode' 话题上
+        send(StateResult_Pub,StateResult_Msg);
+        break;
+    end
+    % pause(1.5);
+end
+% rosshutdown;
+
+
+function StateResult_Callback(message, ~)
+%UNTITLED2 此处显示有关此函数的摘要
+%   此处显示详细说明 
+    global sig dingding
+    if message.LatestMessage.Data == true
+        sig = 1; %表示伪密钥检测成功
+    else
+        sig = 0;
+    end
+    dingding = dingding + 1;
+    disp( ["sig = ", num2str(sig), "dingding = ", num2str(dingding)]);
+end
+
+
+

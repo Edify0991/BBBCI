@@ -50,15 +50,17 @@ def ssvep_pre():
     result = 0
     bg_colour = [-1, -1, -0.25]
     win = visual.Window(
-    size=[800, 600],
-    units="pix",
-    fullscr=True,
-    color=[-1,-1,-1],
+        size=[800, 600],
+        units="pix",
+        fullscr=False,
+        color=[-1,-1,-1], # black(-1,-1,-1)  white(1,1,1)
     )
-    screenXpixels, screenYpixels = win.size   # Get the size of the on screen window
+    screenXpixels, screenYpixels = win.size   # Get the size of the on screen window 
     Msperframe = win.getMsPerFrame()  # 刷新间隔
     fps = np.round(1000 / Msperframe[0]).astype(int)  # 每秒刷新率
     print("your screen's fps is ", fps)
+    
+    # Load the PseudoKey Picture
     path = '/home/edifier/code/catkin_ws/src/bci_grip/scripts/' 
     theImage_PseudoKey = path + 'PseudoKey.jpg'
     Image_PseudoKey = cv2.imread(theImage_PseudoKey, cv2.IMREAD_UNCHANGED)
@@ -67,9 +69,9 @@ def ssvep_pre():
     ImageSize_v_PseudoKey = Image_PseudoKey.shape[0] # 200 -y
     cv2.imwrite(path + 'PseudoKey_rs.jpg', Image_PseudoKey)
     theImage_PseudoKey = path + 'PseudoKey_rs.jpg'   
-    # Position and size of the images [x, y, width, height] 
-    xCenter, yCenter = 0, 0 # 屏幕中心
     
+    xCenter, yCenter = 0, 0 # 屏幕中心
+    # Position of  picture is [Center_X, Center_Y, Width, Height]
     Position_pseudo_LU = 0.5 * np.array([-screenXpixels, screenYpixels, 0, 0]) + 0.5 * np.array([ImageSize_u_PseudoKey, -ImageSize_v_PseudoKey, 0, 0]) + np.array([0, 0, ImageSize_u_PseudoKey, ImageSize_v_PseudoKey])   # 左上
     Position_pseudo_RU = 0.5 * np.array([screenXpixels, screenYpixels, 0, 0]) + 0.5 * np.array([-ImageSize_u_PseudoKey, -ImageSize_v_PseudoKey, 0, 0]) + np.array([0, 0, ImageSize_u_PseudoKey, ImageSize_v_PseudoKey])  # 右上
     Position_pseudo_RD = 0.5 * np.array([screenXpixels, -screenYpixels, 0, 0]) + 0.5 * np.array([-ImageSize_u_PseudoKey, ImageSize_v_PseudoKey, 0, 0]) + np.array([0, 0, ImageSize_u_PseudoKey, ImageSize_v_PseudoKey])   # 右下
@@ -102,15 +104,15 @@ def ssvep_pre():
                             )
     wait_text_3=visual.TextStim(
                             win=win,
-                            text='The experiment is end!.',
+                            text='The experiment is end!',
                             color=[1, 1, 1],
                             colorSpace='rgb',
                             pos=(0,0),
                             height=60
                             )
-    block = [0 for i in range(4)]  # 初始化
+    block_PseudoKey = [0 for i in range(4)]  # 初始化
     for i in range(4):
-        block[i] = visual.ImageStim(
+        block_PseudoKey[i] = visual.ImageStim(
                                             win=win, 
                                             units='pix',
                                             image=theImage_PseudoKey, 
@@ -122,6 +124,7 @@ def ssvep_pre():
     n = np.arange(0, fps)
     for i in range(4):
         seq[i] = [(math.sin(angF_pre * (j / fps)) * 0.5 + 0.5) for j in range(n.shape[0])]  # 利用math.sin转换成正弦波，并且利用offset将幅值转换到0～1,进而利用对比度实现闪烁。
+    
     while 1:
         wait_text_1.draw()
         win.flip()
@@ -132,10 +135,11 @@ def ssvep_pre():
         if event.getKeys(keyList=['space', 'escape']) or sig == 1:
             break
         for num in range(4):
-            block[num].opacity = seq[num][i % fps]
-            block[num].draw()
+            block_PseudoKey[num].opacity = seq[num][i % fps]
+            block_PseudoKey[num].draw()
         i += 1
         win.flip()
+        
     # 伪密钥检测后，进入了下一个场景图片接收与显示的阶段
     # After the detection of the pseudo key,
     # the next stage of picture reception and display is entered
@@ -151,6 +155,7 @@ def ssvep_pre():
         win.flip()
         if event.getKeys(keyList=['space', 'escape']):
             break
+        
     #尺寸重新设置，将订阅的图片占满屏幕
     height, width, chan = Pic.shape   # 读取图片三维矩阵大小，顺序为 高度 宽度 通道数
     resize_y = 200
